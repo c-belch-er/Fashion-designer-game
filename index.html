@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threadcount - Fashion Brand Simulator v0.1</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+  body { background: #f5f0eb; color: #2d2a26; padding: 20px; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #8a8178; font-size: 13px; margin-bottom: 16px; }
+  .stats { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .stat { background: #fff; border-radius: 10px; padding: 10px 14px; flex: 1; min-width: 150px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a8178; }
+  .stat .value { font-size: 20px; font-weight: 700; }
+  .bar { height: 6px; background: #eee; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 3px; transition: width .4s; }
+  .panel { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 16px; }
+  .panel h2 { font-size: 14px; margin-bottom: 12px; color: #6b6156; text-transform: uppercase; letter-spacing: .5px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .field { flex: 1; min-width: 140px; }
+  label { display: block; font-size: 12px; color: #6b6156; margin-bottom: 4px; }
+  select, input[type=number] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fafafa; }
+  input[type=range] { width: 100%; }
+  .readout { font-size: 12px; color: #8a8178; margin-top: 2px; }
+  button { background: #2d2a26; color: #fff; border: none; padding: 12px 24px; font-size: 15px; border-radius: 8px; cursor: pointer; width: 100%; }
+  button:hover { background: #4a453e; }
+  button:disabled { background: #bbb; cursor: not-allowed; }
+  #log { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.5; }
+  #log p { padding: 6px 0; border-bottom: 1px solid #f0ece6; }
+  .good { color: #2e7d32; } .bad { color: #c62828; } .event { color: #6a4fb3; font-weight: 600; }
+  #gameover { display: none; text-align: center; padding: 20px; }
+  #gameover h2 { font-size: 22px; margin-bottom: 8px; }
+  .trendline { font-size: 12px; color: #8a8178; margin-top: -8px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<h1>👕 Threadcount</h1>
+<div class="sub">Fashion brand simulator — v0.1 prototype. Build your brand from bedroom to fashion house. Don't go broke.</div>
+
+<div class="stats">
+  <div class="stat"><div class="label">Week</div><div class="value" id="week">1</div></div>
+  <div class="stat"><div class="label">💰 Cash</div><div class="value" id="cash">$2,000</div>
+    <div class="bar"><div id="cashbar" style="width:4%; background:#2e7d32;"></div></div></div>
+  <div class="stat"><div class="label">⭐ Reputation</div><div class="value" id="rep">50 / 100</div>
+    <div class="bar"><div id="repbar" style="width:50%; background:#f9a825;"></div></div></div>
+  <div class="stat"><div class="label">❤️ Loyal customers</div><div class="value" id="cust">0</div>
+    <div class="bar"><div id="custbar" style="width:0%; background:#d81b60;"></div></div></div>
+</div>
+
+<div class="panel" id="decisions">
+  <h2>This week's decisions</h2>
+  <div class="trendline" id="trendline"></div>
+  <div class="row">
+    <div class="field"><label>Product</label>
+      <select id="product">
+        <option value="tee">T-shirt (costs $8 to make, always some demand)</option>
+        <option value="hoodie">Hoodie (costs $18, fewer buyers)</option>
+        <option value="dress">Dress (costs $25, niche)</option>
+      </select></div>
+    <div class="field"><label>Fabric</label>
+      <select id="fabric">
+        <option value="cheap">Cheap — saves money, hurts reputation, more returns</option>
+        <option value="standard" selected>Standard — the safe middle</option>
+        <option value="eco">Eco-friendly — costs more, reputation boost, loyal fans</option>
+      </select></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>How many to make?</label>
+      <input type="number" id="qty" value="30" min="1" max="500"></div>
+    <div class="field"><label>Marketing spend ($)</label>
+      <input type="number" id="mkt" value="100" min="0" max="2000" step="50"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Selling price</label>
+      <input type="range" id="price" min="1.5" max="5" step="0.1" value="2.5">
+      <div class="readout" id="pricereadout"></div></div>
+  </div>
+  <button id="runweek" onclick="runWeek()">Run the week ▶</button>
+</div>
+
+<div class="panel">
+  <h2>What happened</h2>
+  <div id="log"><p>Welcome! You have $2,000 and a dream. Make your first decisions above.</p></div>
+</div>
+
+<div class="panel" id="gameover">
+  <h2 id="goTitle"></h2>
+  <p id="goText"></p><br>
+  <button onclick="location.reload()">Start over</button>
+</div>
+
+<script>
+// ---------- Game data (easy to tweak!) ----------
+const PRODUCTS = {
+  tee:    { name: "T-shirt", baseCost: 8,  baseDemand: 32 },
+  hoodie: { name: "Hoodie",  baseCost: 18, baseDemand: 20 },
+  dress:  { name: "Dress",   baseCost: 25, baseDemand: 14 },
+};
+const FABRICS = {
+  cheap:    { costMult: 0.8, returnRate: 0.28, repDelta: -2, label: "cheap fabric" },
+  standard: { costMult: 1.0, returnRate: 0.20, repDelta: 0,  label: "standard fabric" },
+  eco:      { costMult: 1.4, returnRate: 0.15, repDelta: +2, label: "eco fabric" },
+};
+const WIN_CASH = 50000;
+
+// ---------- Game state ----------
+let state = {
+  week: 1, cash: 2000, rep: 50, customers: 0,
+  trend: { tee: 1, hoodie: 1, dress: 1 },
+  hype: 1,           // event multiplier for next week's demand
+  soldOut: false,
+};
+
+// ---------- Helpers ----------
+const $ = id => document.getElementById(id);
+const money = n => "$" + Math.round(n).toLocaleString();
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function log(msg, cls) {
+  const p = document.createElement("p");
+  if (cls) p.className = cls;
+  p.innerHTML = msg;
+  $("log").prepend(p);
+}
+function render() {
+  $("week").textContent = state.week;
+  $("cash").textContent = money(state.cash);
+  $("cashbar").style.width = clamp(state.cash / WIN_CASH * 100, 0, 100) + "%";
+  $("rep").textContent = Math.round(state.rep) + " / 100";
+  $("repbar").style.width = state.rep + "%";
+  $("cust").textContent = Math.round(state.customers);
+  $("custbar").style.width = clamp(state.customers / 10, 0, 100) + "%";
+  const t = state.trend;
+  $("trendline").textContent = "📈 This week's trends — Tees: " + t.tee.toFixed(1) +
+    "× · Hoodies: " + t.hoodie.toFixed(1) + "× · Dresses: " + t.dress.toFixed(1) + "×";
+  const prod = PRODUCTS[$("product").value], fab = FABRICS[$("fabric").value];
+  const price = prod.baseCost * fab.costMult * parseFloat($("price").value);
+  $("pricereadout").textContent = "You'll charge " + money(price) + " per item (costs you " +
+    money(prod.baseCost * fab.costMult) + " to make)";
+}
+
+// ---------- One week of the business ----------
+function runWeek() {
+  const prod = PRODUCTS[$("product").value];
+  const fab  = FABRICS[$("fabric").value];
+  const qty  = clamp(parseInt($("qty").value) || 0, 0, 500);
+  const mkt  = clamp(parseInt($("mkt").value) || 0, 0, state.cash);
+  const mult = parseFloat($("price").value);
+  if (qty <= 0) { log("⚠️ Make at least 1 item!", "bad"); return; }
+
+  const unitCost = prod.baseCost * fab.costMult;
+  const price    = unitCost * mult;
+  const totalCost = qty * unitCost + mkt;
+  if (totalCost > state.cash) { log("⚠️ You can't afford that! Make fewer items or spend less on marketing.", "bad"); return; }
+
+  // How many people want to buy?
+  const priceFactor = Math.pow(3.5 / mult, 1.5);            // cheap price = more buyers
+  const repFactor   = 0.5 + state.rep / 100;                // good rep = more buyers
+  let demand = prod.baseDemand * priceFactor * repFactor * state.trend[$("product").value] * state.hype
+             + mkt / 8 + state.customers * 0.05;            // marketing + loyal fans help
+
+  // Sell, but never more than you made
+  const sold = Math.min(Math.round(demand), qty);
+  const soldOut = sold === qty && demand > qty;
+
+  // Some customers send items back (fashion's silent killer)
+  const returned = Math.round(sold * fab.returnRate);
+  const revenue = (sold - returned) * price;
+
+  state.cash -= totalCost;
+  state.cash += revenue;
+  const profit = revenue - totalCost;
+
+  // Reputation moves based on choices + results
+  let repChange = fab.repDelta;
+  if (soldOut) repChange += 1;                              // scarcity is cool
+  if (qty - sold > qty * 0.5) repChange -= 1;               // piles of unsold stock looks sad
+  state.rep = clamp(state.rep + repChange, 0, 100);
+
+  // Loyal customers grow with happy sales
+  state.customers += (sold - returned) * 0.3;
+
+  log(`<b>Week ${state.week}:</b> Sold <b>${sold}</b> ${prod.name}s at ${money(price)}. ` +
+      `${returned} came back as returns. ${profit >= 0 ? "Profit" : "Loss"}: ` +
+      `<b class="${profit >= 0 ? "good" : "bad"}">${money(profit)}</b>.` +
+      (soldOut ? " Sold out! 🔥" : "") + (qty - sold > 0 ? ` (${qty - sold} unsold)` : ""));
+
+  // Random events (~20% of weeks)
+  if (Math.random() < 0.2) randomEvent();
+
+  // New trends each week
+  for (const k in state.trend) state.trend[k] = 0.5 + Math.random();
+  state.hype = 1;
+  state.week++;
+
+  // Win / lose check
+  if (state.cash >= WIN_CASH) return endGame(true);
+  if (state.cash < 0) return endGame(false);
+
+  $("qty").value = Math.max(10, Math.round(sold * 1.2));    // gentle suggestion for next week
+  render();
+}
+
+function randomEvent() {
+  const roll = Math.random();
+  if (roll < 0.3) {
+    state.hype = 2; state.rep = clamp(state.rep + 5, 0, 100);
+    log("🌟 EVENT: A celebrity was spotted wearing your brand! Next week, demand doubles.", "event");
+  } else if (roll < 0.55) {
+    state.rep = clamp(state.rep - 8, 0, 100);
+    log("📉 EVENT: A viral video calls your brand overpriced. Reputation took a hit.", "event");
+  } else if (roll < 0.75) {
+    const k = Object.keys(state.trend)[Math.floor(Math.random() * 3)];
+    state.trend[k] = 1.8;
+    log(`🔥 EVENT: "${k}s" are suddenly trending everywhere this week!`, "event");
+  } else {
+    state.customers = Math.round(state.customers * 1.2);
+    log("❤️ EVENT: A fashion blogger praised your quality. Loyal customers grew!", "event");
+  }
+}
+
+function endGame(won) {
+  $("decisions").style.display = "none";
+  $("runweek").disabled = true;
+  const go = $("gameover");
+  go.style.display = "block";
+  $("goTitle").textContent = won ? "🏆 You built a fashion house!" : "💀 Bankrupt.";
+  $("goText").textContent = won
+    ? `It took you ${state.week} weeks to turn $2,000 into ${money(state.cash)}. Your brand is famous.`
+    : `Your brand survived ${state.week} weeks. The fashion world is brutal.`;
+}
+
+// Live update the price readout when sliders change
+$("price").addEventListener("input", render);
+$("product").addEventListener("change", render);
+$("fabric").addEventListener("change", render);
+render();
+</script>
+</body>
+</html>
